@@ -31,7 +31,8 @@ def get_html(url):
     try:
         #伪装成浏览器
         headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.63 Safari/537.36'}
-        r = requests.get(url, headers=headers, timeout=30)
+        #发起request时跟踪跳转页面
+        r = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
         r.raise_for_status()
         r.encoding = r.apparent_encoding
         return r.text
@@ -61,7 +62,7 @@ def get_html_post(url,data=None):
 
 #入口，用于获取需要爬的子网页，把古巴的首页的第一页拿到
 #TODO 不仅拿到首页，还要触发加载更多，获取更多的首页信息
-def main():
+def get_main_page_write_to_redis():
     #定义一个变量，用来存放网页的url
     url = "http://guba.eastmoney.com/api/dynamicInfo"
     #调用get_html()函数，获取网页的源代码
@@ -84,20 +85,52 @@ def main():
 
 
 #根据首页信息，去获取每一个文章的url，然后拿到文章中的评论
-def get_article(main_page_key):
-    main_page=json.loads(json.loads(read_key(main_page_key)))
+def get_article_list_write_to_redis(main_page_key):
+    main_page=json.loads(json.loads(read_key(main_page_key)))["data"]
+    items=main_page["items"]
+    item_data=[]
+    for item in items:
+        if(item["infoType"]==2201):
+            url_start_with="https://finance.eastmoney.com/a/"
+        else:
+            url_start_with="https://caifuhao.eastmoney.com/news/"
+        item_data.append({"infocode":item["itemData"]["code"],"title":item["itemData"]["title"],"url_start_with":url_start_with})
     #获取main_page中的每一个文章的url
-    return main_page['data']
+    item_key=main_page_key+".items"
+    write_key(item_key,json.dumps(item_data))
+    return item_key
 
 
-#html_dict=read_key('mainPage_http://guba.eastmoney.com/api/dynamicInfo.2023-04-21-00-43.1')
-#time.sleep(10)
+#获取redis中item的信息,并访问文章，同时写入到redis
+def read_redis_article_list_get_url_write_to_redis(item_key):
+    item_list=json.loads(read_key(item_key))
+    for item in item_list:
+        if(item["url_start_with"]=="https://finance.eastmoney.com/a/"):
+            url=item["url_start_with"]+"{}.html".format(item["infocode"])
+        else:
+            url=item["url_start_with"]+"{}".format(item["infocode"])
+        print(url)
+        html=get_html(url)
+        if html == "ERROR":
+            print("网页获取失败")
+            sys.exit()
+        #解析网页源代码
+        soup = BeautifulSoup(html, "html.parser")
+        #获取当前时间，用 年-月-日-小时-分钟的格式
+        now_time = time.strftime("%Y-%m-%d-%H-%M", time.localtime())
+        article_key='article_'+url+'.'+str(now_time)
+        write_key(article_key,json.dumps(html))
+        time.sleep(5)
+    return article_key
 
-#将redis中读取的二进制中文转化成中文
-res=get_article("mainPage_http://guba.eastmoney.com/api/dynamicInfo.2023-05-02-23-40.1")
-#for key in res:
-    #print(key)
-    #print(res[key])
-realTimeFixedItems=res["realTimeFixedItems"][0]
-print(realTimeFixedItems)
-print("==========")
+
+
+
+
+
+
+
+
+
+
+
