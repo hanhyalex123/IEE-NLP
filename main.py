@@ -8,6 +8,26 @@ import os
 import sys
 import json
 import redis
+from selenium import webdriver
+#import driver中的By
+from selenium.webdriver.common.by import By
+
+class Driver(object):
+
+    #记录第一个被创建对象的引用
+    instance = None
+
+    def __new__(cls, *args, **kwargs):
+
+        #1.判断类属性是否为空对象，若为空说明第一个对象还没被创建
+        if cls.instance is None:
+        #2.对第一个对象没有被创建，我们应该调用父类的方法，为第一个对象分配空间
+            cls.instance = super().__new__(cls)
+        #3.把类属性中保存的对象引用返回给python的解释器
+        return cls.instance
+
+    def __init__(self):
+        driver=webdriver.Chrome()
 
 #连接redis，127.0.0.1:6379
 r = redis.StrictRedis(host='127.0.0.1', port=6379, db=0,decode_responses=True, charset='UTF-8', encoding='UTF-8')
@@ -101,8 +121,44 @@ def get_article_list_write_to_redis(main_page_key):
     return item_key
 
 
-#获取redis中item的信息,并访问文章，同时写入到redis
+#使用selenium获取redis中item的信息,并访问文章，同时写入到redis
 def read_redis_article_list_get_url_write_to_redis(item_key):
+    item_list=json.loads(read_key(item_key))
+    driver=webdriver.Chrome()
+    for item in item_list:
+        if(item["url_start_with"]=="https://finance.eastmoney.com/a/"):
+            url=item["url_start_with"]+"{}.html".format(item["infocode"])
+        else:
+            url=item["url_start_with"]+"{}".format(item["infocode"])
+        print(url)
+        driver.get(url)
+        #点击页面中的a，href=#gubaComment
+        driver.find_element(By.CSS_SELECTOR, "a[href='#gubaComment']").click()
+        #检查页面上是否有加载更多的按钮，如果有就点击
+        if(driver.find_elements(By.CSS_SELECTOR, "a[class='view_morebtn bottombtn fl']")):
+            driver.find_element(By.CSS_SELECTOR, "a[class='view_morebtn bottombtn fl']").click()
+        #获取跳转后页面上的全部评论，如果有下一页按钮就点击
+        page=1
+        while(page==1 or driver.find_elements(By.CSS_SELECTOR, "a[class='nextp']")):
+            #点击下一页
+            if(page!=1):
+                driver.find_element(By.CSS_SELECTOR, "a[class='nextp']").click()
+            #解析网页源代码
+            html=driver.page_source
+            if html == "ERROR":
+                print("网页获取失败")
+                sys.exit()
+            #解析网页源代码
+            soup = BeautifulSoup(html, "html.parser")
+            #获取当前时间，用 年-月-日-小时-分钟的格式
+            now_time = time.strftime("%Y-%m-%d-%H-%M", time.localtime())
+            article_key='article_'+url+'.'+str(now_time)+'.page_'+str(page)
+            write_key(article_key,json.dumps(html))
+            page+=1
+    return article_key
+
+@DeprecationWarning
+def read_redis_article_list_get_url_write_to_redis_depricated(item_key):
     item_list=json.loads(read_key(item_key))
     for item in item_list:
         if(item["url_start_with"]=="https://finance.eastmoney.com/a/"):
