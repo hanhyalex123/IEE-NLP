@@ -127,22 +127,28 @@ def read_redis_article_list_get_url_write_to_redis(item_key):
     driver=webdriver.Chrome()
     for item in item_list:
         if(item["url_start_with"]=="https://finance.eastmoney.com/a/"):
-            url=item["url_start_with"]+"{}.html".format(item["infocode"])
+            url=item["url_start_with"]+"{}.html#gubaComment".format(item["infocode"])
         else:
             url=item["url_start_with"]+"{}".format(item["infocode"])
         print(url)
         driver.get(url)
-        #点击页面中的a，href=#gubaComment
-        driver.find_element(By.CSS_SELECTOR, "a[href='#gubaComment']").click()
+        time.sleep(5)
+        try:
         #检查页面上是否有加载更多的按钮，如果有就点击
-        if(driver.find_elements(By.CSS_SELECTOR, "a[class='view_morebtn bottombtn fl']")):
-            driver.find_element(By.CSS_SELECTOR, "a[class='view_morebtn bottombtn fl']").click()
+            if(driver.find_elements(By.CSS_SELECTOR, "a[class='view_morebtn bottombtn fl']")):
+                driver.find_element(By.CSS_SELECTOR, "a[class='view_morebtn bottombtn fl']").click()
+                time.sleep(5)
+                windows = driver.window_handles   # 获取当前页句柄
+                driver.switch_to.window(windows[-1])
+        except Exception as e:
+            print(e)
         #获取跳转后页面上的全部评论，如果有下一页按钮就点击
         page=1
         while(page==1 or driver.find_elements(By.CSS_SELECTOR, "a[class='nextp']")):
             #点击下一页
             if(page!=1):
                 driver.find_element(By.CSS_SELECTOR, "a[class='nextp']").click()
+                time.sleep(0.5)
             #解析网页源代码
             html=driver.page_source
             if html == "ERROR":
